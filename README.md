@@ -88,7 +88,7 @@ mvn clean install
 
 ## Author
 
-Shital Savant
+Ojas Gangwar
 
 ## License
 
