@@ -60,9 +60,9 @@ src/main/java
 
 ## Setup Instructions
 
-### Clone Repository
 
-git clone https://github.com/Sakhhu/Employee-Management-Zidio-Development-.git
+
+
 
 ### Configure Database
 
