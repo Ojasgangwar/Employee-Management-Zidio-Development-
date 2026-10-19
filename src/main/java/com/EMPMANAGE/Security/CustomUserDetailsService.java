@@ -1,10 +1,9 @@
 package com.EMPMANAGE.Security;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -19,20 +18,33 @@ import com.EMPMANAGE.Repository.UserAuthRepository;
 @Service
 public class CustomUserDetailsService implements UserDetailsService {
 
-    @Autowired
-    private UserAuthRepository userRepo;
+    private final UserAuthRepository userRepo;
+
+    public CustomUserDetailsService(UserAuthRepository userRepo) {
+        this.userRepo = userRepo;
+    }
 
     @Override
-    public UserDetails loadUserByUsername(String userOfficialEmail) throws UsernameNotFoundException {
+    public UserDetails loadUserByUsername(String userOfficialEmail)
+            throws UsernameNotFoundException {
+        UserAuthentication user = userRepo.findByUserOfficialEmail(userOfficialEmail)
+                .orElseThrow(() -> new UsernameNotFoundException(
+                        "User not found with email: " + userOfficialEmail));
 
-		UserAuthentication user = userRepo.findByUserOfficialEmail(userOfficialEmail)
-				.orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + userOfficialEmail));
+        List<SimpleGrantedAuthority> authorities = new ArrayList<>();
+        authorities.add(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()));
 
-		Set<Permission> permissions = RoleBasedPermission.getRoleBasePermission().get(user.getRole());
+        Set<Permission> permissions =
+                RoleBasedPermission.getRoleBasePermission().get(user.getRole());
+        if (permissions != null) {
+            permissions.stream()
+                    .map(permission -> new SimpleGrantedAuthority(permission.name()))
+                    .forEach(authorities::add);
+        }
 
-		List<SimpleGrantedAuthority> authorities = permissions.stream()
-				.map(permission -> new SimpleGrantedAuthority(permission.name())).collect(Collectors.toList());
-
-		return new User(user.getUserOfficialEmail(),user.getPassword(), authorities);
+        return User.withUsername(user.getUserOfficialEmail())
+                .password(user.getPassword())
+                .authorities(authorities)
+                .build();
     }
 }
