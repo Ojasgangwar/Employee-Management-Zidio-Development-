@@ -1,7 +1,7 @@
 package com.EMPMANAGE.DTO;
 
-import org.jspecify.annotations.Nullable;
-
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -10,14 +10,10 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class LoginRquestDTO {
+    @NotBlank
+    @Email
     private String userOfficialEmail;
+
+    @NotBlank
     private String password;
-	public @Nullable CharSequence getPassword() {
-		
-		return null;
-	}
-	public Object getUserOfficialEmail() {
-		
-		return null;
-	}
 }
