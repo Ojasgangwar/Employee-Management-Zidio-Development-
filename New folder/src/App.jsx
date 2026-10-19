@@ -1,139 +1,165 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 
-// आपके बैकएंड स्प्रिंग बूट का बिल्कुल सही URL और पोर्ट
-const API_BASE = "http://localhost:8082/api";
+const API_BASE = 'http://localhost:8082/api';
 
 function App() {
+  const [token, setToken] = useState('');
+  const [authMode, setAuthMode] = useState('login');
+  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [authError, setAuthError] = useState('');
   const [employees, setEmployees] = useState([]);
   const [activeTab, setActiveTab] = useState('employees');
   const [selectedEmpPayroll, setSelectedEmpPayroll] = useState(null);
+  const [pageError, setPageError] = useState('');
+
+  const api = (authToken = token) => axios.create({
+    baseURL: API_BASE,
+    headers: authToken ? { Authorization: `Bearer ${authToken}` } : {}
+  });
 
   useEffect(() => {
-    fetchEmployees();
-  }, []);
+    if (token) fetchEmployees(token);
+  }, [token]);
 
-  const fetchEmployees = async () => {
+  const fetchEmployees = async (authToken = token) => {
     try {
-      const res = await axios.get(`${API_BASE}/employees`);
+      const res = await api(authToken).get('/employees');
       setEmployees(res.data);
-    } catch (err) { 
-      console.error("Error fetching data:", err); 
+      setPageError('');
+    } catch (err) {
+      setEmployees([]);
+      setPageError(err.response?.status === 403
+        ? 'Your account does not have permission to view the employee directory. Sign in with an HR or ADMIN account.'
+        : 'Could not load employees. Check that the backend and database are running.');
     }
+  };
+
+  const submitAuth = async (event) => {
+    event.preventDefault();
+    setAuthError('');
+    try {
+      const endpoint = authMode === 'login' ? '/auth/login' : '/auth/register';
+      const body = authMode === 'login'
+        ? { userOfficialEmail: email, password }
+        : { username, userOfficialEmail: email, password };
+      const response = await axios.post(`${API_BASE}${endpoint}`, body);
+      if (!response.data?.token) {
+        setAuthError('The server did not return a token. Check the backend configuration.');
+        return;
+      }
+      setToken(response.data.token);
+      setPassword('');
+      setAuthError('');
+    } catch (err) {
+      setAuthError(err.response?.data?.detail || err.response?.data?.message ||
+        (err.response?.status === 401 ? 'Invalid email or password.' : 'Authentication failed. Check the API and submitted details.'));
+    }
+  };
+
+  const logout = () => {
+    setToken('');
+    setEmployees([]);
+    setSelectedEmpPayroll(null);
+    setPageError('');
   };
 
   const markAttendance = async (id) => {
     try {
-      await axios.post(`${API_BASE}/attendance/checkin/${id}`);
-      alert("Attendance Marked Successfully!");
-    } catch (err) { 
-      alert("Failed to mark attendance"); 
+      await api().post(`/attendance/checkin/${id}`);
+      alert('Attendance marked successfully.');
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Failed to mark attendance. It may already be marked today.');
     }
   };
 
   const processPayroll = async (id) => {
     try {
-      const res = await axios.post(`${API_BASE}/payroll/generate/${id}`);
+      const res = await api().post(`/payroll/generate/${id}`);
       setSelectedEmpPayroll(res.data);
-      alert("Salary Slip Generated Successfully!");
-    } catch (err) { 
-      alert("Failed to generate payroll"); 
+      alert('Salary slip generated successfully.');
+    } catch (err) {
+      alert(err.response?.status === 403
+        ? 'You need RUN_PAYROLL permission (ADMIN role) to generate payroll.'
+        : (err.response?.data?.detail || 'Failed to generate payroll.'));
     }
   };
 
+  if (!token) {
+    return (
+      <main style={{ fontFamily: 'Arial', background: '#f4f7fe', minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 20 }}>
+        <form onSubmit={submitAuth} style={{ width: 'min(420px, 100%)', background: 'white', padding: 32, borderRadius: 16, boxShadow: '0 4px 18px rgba(0,0,0,.08)' }}>
+          <h2 style={{ color: '#2b3674' }}>NexusHR</h2>
+          <p>{authMode === 'login' ? 'Sign in to your account' : 'Create an employee account'}</p>
+          {authMode === 'register' && <input required value={username} onChange={e => setUsername(e.target.value)} placeholder="Username" style={inputStyle} />}
+          <input required type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Official email" style={inputStyle} />
+          <input required minLength={8} type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password (at least 8 characters)" style={inputStyle} />
+          {authError && <p role="alert" style={{ color: '#b42318' }}>{authError}</p>}
+          <button type="submit" style={primaryButton}>{authMode === 'login' ? 'Sign in' : 'Register'}</button>
+          <p style={{ marginTop: 18 }}>
+            {authMode === 'login' ? 'New employee?' : 'Already registered?'}{' '}
+            <button type="button" onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setAuthError(''); }} style={{ border: 0, background: 'none', color: '#4318ff', cursor: 'pointer' }}>
+              {authMode === 'login' ? 'Create account' : 'Sign in'}
+            </button>
+          </p>
+          {authMode === 'register' && <small>Public registration creates an EMPLOYEE account. HR/Admin permissions must be assigned by an authorized administrator.</small>}
+        </form>
+      </main>
+    );
+  }
+
   return (
-    <div style={{ fontFamily: 'Arial', backgroundColor: '#f4f7fe', minHeight: '100vh', margin: 0, padding: 0 }}>
-      {/* Top Navbar */}
-      <nav style={{ backgroundColor: '#2b3674', color: 'white', padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 style={{ margin: 0 }}>NexusHR - AI Dashboard</h2>
-        <div>
-          <button onClick={() => { setActiveTab('employees'); setSelectedEmpPayroll(null); }} style={{ background: 'none', border: 'none', color: 'white', marginLeft: '20px', cursor: 'pointer', fontSize: '16px', fontWeight: activeTab === 'employees' ? 'bold' : 'normal' }}>Employees</button>
-          <button onClick={() => { setActiveTab('attendance'); setSelectedEmpPayroll(null); }} style={{ background: 'none', border: 'none', color: 'white', marginLeft: '20px', cursor: 'pointer', fontSize: '16px', fontWeight: activeTab === 'attendance' ? 'bold' : 'normal' }}>Attendance</button>
-          <button onClick={() => { setActiveTab('payroll'); setSelectedEmpPayroll(null); }} style={{ background: 'none', border: 'none', color: 'white', marginLeft: '20px', cursor: 'pointer', fontSize: '16px', fontWeight: activeTab === 'payroll' ? 'bold' : 'normal' }}>Payroll</button>
+    <div style={{ fontFamily: 'Arial', backgroundColor: '#f4f7fe', minHeight: '100vh' }}>
+      <nav style={{ backgroundColor: '#2b3674', color: 'white', padding: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+        <h2 style={{ margin: 0 }}>NexusHR - Employee Dashboard</h2>
+        <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+          {['employees', 'attendance', 'payroll'].map(tab => (
+            <button key={tab} onClick={() => { setActiveTab(tab); setSelectedEmpPayroll(null); }} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontWeight: activeTab === tab ? 'bold' : 'normal' }}>{tab[0].toUpperCase() + tab.slice(1)}</button>
+          ))}
+          <button onClick={logout} style={{ background: 'white', color: '#2b3674', border: 0, padding: '8px 12px', borderRadius: 6, cursor: 'pointer' }}>Sign out</button>
         </div>
       </nav>
-
-      {/* Main Content Area */}
-      <div style={{ padding: '40px' }}>
-        {/* Tab 1: Employee Directory */}
-        {activeTab === 'employees' && (
-          <div>
-            <h3 style={{ color: '#1b2559' }}>Employee Directory</h3>
-            <table style={{ width: '100%', borderCollapse: 'collapse', backgroundColor: 'white', borderRadius: '15px', overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
-              <thead>
-                <tr style={{ backgroundColor: '#f7f9fa', borderBottom: '1px solid #e9edf7', textAlign: 'left' }}>
-                  <th style={{ padding: '15px' }}>Name</th><th style={{ padding: '15px' }}>Email</th><th style={{ padding: '15px' }}>Department</th><th style={{ padding: '15px' }}>Designation</th>
-                </tr>
-              </thead>
-              <tbody>
-                {employees.length === 0 ? (
-                  <tr><td colSpan="4" style={{ padding: '20px', textAlign: 'center', color: '#a3eed2' }}>No employees found. Make sure backend is running!</td></tr>
-                ) : (
-                  employees.map(emp => (
-                    <tr key={emp.id} style={{ borderBottom: '1px solid #e9edf7' }}>
-                      <td style={{ padding: '15px' }}>{emp.firstName} {emp.lastName}</td>
-                      <td style={{ padding: '15px' }}>{emp.email}</td>
-                      <td style={{ padding: '15px' }}>{emp.department}</td>
-                      <td style={{ padding: '15px' }}>{emp.designation}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
+      <div style={{ padding: 32 }}>
+        {pageError && <p role="alert" style={{ color: '#b42318', background: '#fff', padding: 14, borderRadius: 8 }}>{pageError}</p>}
+        {activeTab === 'employees' && <section>
+          <h3 style={{ color: '#1b2559' }}>Employee Directory</h3>
+          <button onClick={() => fetchEmployees()} style={primaryButton}>Refresh</button>
+          <div style={{ overflowX: 'auto', marginTop: 16 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', borderRadius: 12 }}>
+              <thead><tr style={{ background: '#f7f9fa', textAlign: 'left' }}>{['Name', 'Email', 'Department', 'Designation'].map(x => <th key={x} style={{ padding: 14 }}>{x}</th>)}</tr></thead>
+              <tbody>{employees.length === 0 ? <tr><td colSpan="4" style={{ padding: 20 }}>No employees to display.</td></tr> : employees.map(emp => <tr key={emp.id} style={{ borderBottom: '1px solid #e9edf7' }}><td style={cellStyle}>{emp.firstName} {emp.lastName}</td><td style={cellStyle}>{emp.email}</td><td style={cellStyle}>{emp.department}</td><td style={cellStyle}>{emp.designation}</td></tr>)}</tbody>
             </table>
           </div>
-        )}
-
-        {/* Tab 2: Attendance */}
-        {activeTab === 'attendance' && (
-          <div>
-            <h3 style={{ color: '#1b2559' }}>Mark Daily Attendance</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '20px' }}>
-              {employees.map(emp => (
-                <div key={emp.id} style={{ backgroundColor: 'white', padding: '20px', borderRadius: '15px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', textAlign: 'center' }}>
-                  <h4 style={{ margin: '0 0 15px 0', color: '#1b2559' }}>{emp.firstName} {emp.lastName}</h4>
-                  <button onClick={() => markAttendance(emp.id)} style={{ backgroundColor: '#05cd99', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Check-In</button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Tab 3: Payroll */}
-        {activeTab === 'payroll' && (
-          <div>
-            <h3 style={{ color: '#1b2559', marginBottom: '20px' }}>Payroll Processing</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '40px' }}>
-              {/* Left Side: Employee List */}
-              <div>
-                <h4 style={{ color: '#1b2559' }}>Select Employee to Generate Salary</h4>
-                {employees.map(emp => (
-                  <div key={emp.id} style={{ backgroundColor: 'white', padding: '15px', borderRadius: '10px', marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' }}>
-                    <span style={{ fontWeight: 'bold', color: '#2b3674' }}>{emp.firstName} {emp.lastName}</span>
-                    <button onClick={() => processPayroll(emp.id)} style={{ backgroundColor: '#4318ff', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>Generate Slip</button>
-                  </div>
-                ))}
-              </div>
-
-              {/* Right Side: Salary Slip Display */}
-              {selectedEmpPayroll && (
-                <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '15px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', borderTop: '5px solid #4318ff' }}>
-                  <h3 style={{ textAlign: 'center', margin: '0 0 20px 0', color: '#1b2559', letterSpacing: '1px' }}>SALARY SLIP</h3>
-                  <p style={{ color: '#2b3674' }}><strong>Date:</strong> {selectedEmpPayroll.paymentDate}</p>
-                  <p style={{ color: '#2b3674' }}><strong>Status:</strong> <span style={{ color: '#05cd99', fontWeight: 'bold' }}>{selectedEmpPayroll.status}</span></p>
-                  <hr style={{ border: 'none', borderTop: '1px dashed #e9edf7', margin: '15px 0' }}/>
-                  <p style={{ display: 'flex', justifyContent: 'space-between', color: '#2b3674' }}><span>Base Salary:</span> <span>₹{selectedEmpPayroll.baseSalary}</span></p>
-                  <p style={{ display: 'flex', justifyContent: 'space-between', color: '#2b3674' }}><span>Allowances:</span> <span>₹{selectedEmpPayroll.allowances}</span></p>
-                  <p style={{ display: 'flex', justifyContent: 'space-between', color: 'red' }}><span>Deductions:</span> <span>-₹{selectedEmpPayroll.deductions}</span></p>
-                  <hr style={{ border: 'none', borderTop: '1px dashed #e9edf7', margin: '15px 0' }}/>
-                  <h4 style={{ display: 'flex', justifyContent: 'space-between', color: '#1b2559', margin: 0 }}><span>Net In-Hand:</span> <span>₹{selectedEmpPayroll.netSalary}</span></h4>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        </section>}
+        {activeTab === 'attendance' && <section>
+          <h3 style={{ color: '#1b2559' }}>Mark Daily Attendance</h3>
+          <div style={cardGrid}>{employees.map(emp => <div key={emp.id} style={employeeCard}><h4>{emp.firstName} {emp.lastName}</h4><button onClick={() => markAttendance(emp.id)} style={{ ...primaryButton, background: '#05a67d' }}>Check-In</button></div>)}</div>
+        </section>}
+        {activeTab === 'payroll' && <section>
+          <h3 style={{ color: '#1b2559' }}>Payroll Processing</h3>
+          <div style={cardGrid}>{employees.map(emp => <div key={emp.id} style={employeeCard}><span>{emp.firstName} {emp.lastName}</span><button onClick={() => processPayroll(emp.id)} style={primaryButton}>Generate Slip</button></div>)}</div>
+          {selectedEmpPayroll && <div style={{ ...employeeCard, maxWidth: 500, marginTop: 24 }}>
+            <h3 style={{ textAlign: 'center' }}>SALARY SLIP</h3>
+            <p><strong>Payment date:</strong> {selectedEmpPayroll.paymentDate}</p>
+            <p><strong>Payroll month:</strong> {selectedEmpPayroll.payrollMonth}</p>
+            <p><strong>Status:</strong> {selectedEmpPayroll.status}</p>
+            <p>Base salary: ₹{selectedEmpPayroll.baseSalary}</p>
+            <p>Allowances: ₹{selectedEmpPayroll.allowances}</p>
+            <p>Deductions: -₹{selectedEmpPayroll.deductions}</p>
+            <h3>Net salary: ₹{selectedEmpPayroll.netSalary}</h3>
+          </div>}
+        </section>}
       </div>
     </div>
   );
 }
+
+const inputStyle = { display: 'block', width: '100%', boxSizing: 'border-box', padding: 12, margin: '12px 0', border: '1px solid #d0d5dd', borderRadius: 8 };
+const primaryButton = { background: '#4318ff', color: 'white', border: 0, padding: '10px 16px', borderRadius: 8, cursor: 'pointer' };
+const cellStyle = { padding: 14 };
+const cardGrid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 16 };
+const employeeCard = { background: 'white', padding: 20, borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.05)' };
 
 export default App;

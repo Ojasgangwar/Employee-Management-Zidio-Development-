@@ -1,13 +1,15 @@
 package com.EMPMANAGE.Service;
 
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.EMPMANAGE.DTO.AuthResponseDTO;
 import com.EMPMANAGE.DTO.LoginRquestDTO;
 import com.EMPMANAGE.DTO.RegisterRequestDTO;
 import com.EMPMANAGE.Entity.UserAuthentication;
+import com.EMPMANAGE.Enum.Role;
 import com.EMPMANAGE.Repository.UserAuthRepository;
 import com.EMPMANAGE.Security.JWTUtil;
 
@@ -26,32 +28,40 @@ public class UserAuthService {
         this.jwtUtil = jwtUtil;
     }
 
+    @Transactional
     public AuthResponseDTO register(RegisterRequestDTO request) {
         if (userRepository.findByUserOfficialEmail(request.getUserOfficialEmail()).isPresent()) {
-            throw new RuntimeException("User already exists with email: " + request.getUserOfficialEmail());
+            throw new IllegalArgumentException("An account with this email already exists");
+        }
+        if (userRepository.existsByUsername(request.getUsername())) {
+            throw new IllegalArgumentException("This username is already in use");
+        }
+        if (request.getPassword() == null || request.getPassword().length() < 8) {
+            throw new IllegalArgumentException("Password must contain at least 8 characters");
         }
 
         UserAuthentication user = new UserAuthentication();
-        user.setUsername(request.getUsername());
-        user.setUserOfficialEmail(request.getUserOfficialEmail());
+        user.setUsername(request.getUsername().trim());
+        user.setUserOfficialEmail(request.getUserOfficialEmail().trim().toLowerCase());
         user.setPassword(passwordEncoder.encode(request.getPassword()));
-        user.setRole(request.getRole());
+        // Never allow a public request to create an ADMIN or HR account.
+        user.setRole(Role.EMPLOYEE);
         userRepository.save(user);
 
         String token = jwtUtil.generateToken(user);
-        return new AuthResponseDTO();
+        return new AuthResponseDTO(token, "Registration successful");
     }
 
     public AuthResponseDTO authenticate(LoginRquestDTO request) {
         UserAuthentication user = userRepository
-                .findByUserOfficialEmail(request.getUserOfficialEmail())
-                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+                .findByUserOfficialEmail(request.getUserOfficialEmail().trim().toLowerCase())
+                .orElseThrow(() -> new BadCredentialsException("Invalid email or password"));
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            throw new RuntimeException("Invalid credentials");
+            throw new BadCredentialsException("Invalid email or password");
         }
 
         String token = jwtUtil.generateToken(user);
-        return new AuthResponseDTO();
+        return new AuthResponseDTO(token, "Login successful");
     }
 }
