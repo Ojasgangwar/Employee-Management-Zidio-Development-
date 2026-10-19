@@ -9,7 +9,6 @@ import com.EMPMANAGE.Entity.UserAuthentication;
 
 @Repository
 public interface UserAuthRepository extends JpaRepository<UserAuthentication, Long> {
-		Optional<UserAuthentication> findByUserOfficialEmail(Object object);
-	
-
+    Optional<UserAuthentication> findByUserOfficialEmail(String userOfficialEmail);
+    boolean existsByUsername(String username);
 }
